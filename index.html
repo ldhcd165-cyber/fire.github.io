@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>소방시설 점검 지적사항 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<!-- Firebase SDK 라이브러리 추가 (실시간 클라우드 연동) -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #F8F9FA;
+    --surface: #FFFFFF;
+    --ink: #1F2A37;
+    --ink-soft: #4B5563;
+    --ink-faint: #9CA3AF;
+    --line: #E5E7EB;
+    --accent: #DC2626;
+    --accent-soft: #FEE2E2;
+    --warn: #D97706;
+    --warn-soft: #FEF3C7;
+    --ok: #16A34A;
+    --ok-soft: #DCFCE7;
+    --radius: 12px;
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Noto Sans KR', -apple-system, system-ui, sans-serif;
+    line-height: 1.6; padding-bottom: 80px;
+  }
+  
+  .stripe {
+    height: 8px; width: 100%;
+    background: repeating-linear-gradient(45deg, var(--accent) 0 10px, var(--ink) 10px 20px);
+  }
+  
+  header.app-head {
+    padding: 28px 20px 20px; max-width: 760px; margin: 0 auto;
+  }
+  header.app-head h1 {
+    font-size: 24px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.02em; color: var(--ink);
+  }
+  header.app-head p {
+    margin: 0; color: var(--ink-soft); font-size: 14px; word-break: keep-all;
+  }
+  
+  main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: var(--transition);
+  }
+  .card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+  .card h2 {
+    font-size: 16px; font-weight: 700; margin: 0 0 16px; color: var(--ink);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border-bottom: 2px solid var(--bg); padding-bottom: 8px;
+  }
+  
+  .badge-count {
+    font-size: 12px; font-weight: 500; color: var(--accent); background: var(--accent-soft);
+    border-radius: 999px; padding: 2px 10px;
+  }
+  
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .row > div { flex: 1; min-width: 160px; }
+  
+  label.f-label { display: block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; font-weight: 600; }
+  
+  input[type=text], input[type=date], select, textarea {
+    width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; font-family: inherit; color: var(--ink); background: var(--surface);
+    transition: var(--transition);
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  input[type=file] {
+    font-size: 13px; width: 100%; padding: 8px 10px;
+    border: 1px dashed var(--line); border-radius: 8px; background: var(--bg); cursor: pointer;
+  }
+  
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  
+  .btn {
+    appearance: none; border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    padding: 11px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+    transition: var(--transition);
+  }
+  .btn:hover { background: #374151; border-color: #374151; }
+  .btn:active { transform: scale(.98); }
+  .btn.outline { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
+  .btn.outline:hover { background: var(--bg); color: var(--ink); border-color: var(--ink-faint); }
+  .btn.accent { background: var(--accent); border-color: var(--accent); }
+  .btn.accent:hover { background: #B91C1C; border-color: #B91C1C; }
+  .btn.block { width: 100%; }
+  
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-row .btn { flex: 1; min-width: 110px; }
+  
+  .btn[disabled] { opacity: .5; cursor: not-allowed; pointer-events: none; }
+  
+  .photo-preview { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--line); }
+  .item-photo { width: 160px; height: 160px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--line); cursor: zoom-in; transition: var(--transition); }
+  .item-photo:hover { opacity: 0.9; transform: scale(1.02); }
+  
+  .item-photo-empty {
+    width: 160px; height: 160px; border-radius: 8px; flex-shrink: 0; border: 1px dashed var(--line);
+    display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--ink-faint); font-size: 13px;
+  }
+  
+  .item-row { display: flex; gap: 16px; align-items: flex-start; padding: 18px 0; border-top: 1px solid var(--line); }
+  .item-row:first-child { border-top: none; }
+  
+  .cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .cat-tag { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+  .item-name { font-weight: 700; font-size: 15px; margin-top: 4px; color: var(--ink); }
+  .item-meta { font-size: 13px; color: var(--ink-soft); margin-top: 4px; background: var(--bg); padding: 4px 8px; border-radius: 4px; display: inline-block; }
+  .item-detail { font-size: 13px; color: var(--ink-soft); margin-top: 6px; padding-left: 4px; border-left: 2px solid var(--line); }
+  
+  .icon-btn {
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer;
+    padding: 6px 12px; font-size: 12px; border-radius: 6px; font-weight: 500; transition: var(--transition);
+  }
+  .icon-btn:hover { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+  
+  .empty { color: var(--ink-faint); font-size: 14px; padding: 24px 0; text-align: center; }
+  
+  .records-list { display: flex; flex-direction: column; gap: 10px; }
+  .record-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; font-size: 14px;
+    transition: var(--transition); background: var(--surface);
+  }
+  .record-item:hover { border-color: var(--ink-faint); }
+  .record-item .rname { font-weight: 700; color: var(--ink); }
+  .record-item .rmeta { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+  .record-actions { display: flex; gap: 6px; }
+  
+  .save-note { font-size: 12px; color: var(--ink-soft); margin-top: 6px; line-height: 1.4; }
+  
+  .report-box { border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--bg); margin-bottom: 12px; }
+  .report-box h3 { font-size: 16px; margin: 0 0 6px; font-weight: 700; }
+  .report-box .meta { font-size: 13px; color: var(--ink-soft); margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  .report-cat { font-size: 14px; font-weight: 700; margin: 16px 0 8px; display: flex; align-items: center; }
+  .report-line { font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line); color: var(--ink); }
+  .report-line:first-of-type { border-top: none; }
+  
+  .period-check { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; cursor: pointer; }
+  .period-check input { width: auto; margin: 0; }
+  
+  .lightbox-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 2000;
+    align-items: center; justify-content: center; padding: 24px; cursor: zoom-out;
+  }
+  .lightbox-overlay.open { display: flex; }
+  .lightbox-overlay img { max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+
+  /* 🖌️ 마킹 편집기 */
+  .markup-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(17, 24, 39, 0.95); z-index: 1000;
+    flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+  }
+  .markup-overlay.open { display: flex; }
+  .markup-canvas-container {
+    position: relative; background: #000; border: 1px solid #374151; border-radius: 12px;
+    overflow: hidden; margin-bottom: 16px; max-width: 100%; max-height: 65vh;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);
+  }
+  .markup-canvas-container canvas { display: block; max-width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+  
+  .markup-toolbar {
+    width: 100%; max-width: 520px; background: #1F2A37; padding: 14px; border-radius: 12px;
+    display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; border: 1px solid #374151;
+  }
+  .markup-control-group { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .markup-control-label { font-size: 12px; color: #9CA3AF; font-weight: 500; }
+  .color-palette { display: flex; gap: 8px; }
+  .color-btn {
+    width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+    transition: var(--transition); position: relative;
+  }
+  .color-btn.active { border-color: #FFF; transform: scale(1.15); }
+  
+  .brush-slider-wrap { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 180px; }
+  .brush-slider-wrap input { flex: 1; accent-color: var(--accent); }
+  
+  .markup-tools { display: flex; gap: 10px; justify-content: center; width: 100%; max-width: 520px; }
+
+  /* 🔔 커스텀 모달 & 알림창 시스템 */
+  .toast-container {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none; width: 90%; max-width: 400px;
+  }
+  .toast {
+    background: var(--ink); color: #fff; padding: 14px 18px; border-radius: 8px;
+    font-size: 14px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    display: flex; align-items: center; justify-content: space-between; pointer-events: auto;
+    animation: slideUp .25s cubic-bezier(0, 0, 0.2, 1);
+  }
+  @keyframes slideUp {
+    from { transform: translateY(12px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .toast.success { background: var(--ok); }
+  .toast.error { background: var(--accent); }
+  .toast.warn { background: var(--warn); }
+  
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 5000;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    animation: popIn .2s cubic-bezier(0, 0, 0.2, 1);
+  }
+  @keyframes popIn {
+    from { transform: scale(.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .modal-box h3 { font-size: 17px; margin: 0 0 10px; font-weight: 700; color: var(--ink); }
+  .modal-box p { font-size: 14px; margin: 0 0 20px; color: var(--ink-soft); line-height: 1.5; word-break: keep-all; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* 동기화 정보 배지 */
+  .sync-badge {
+    background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE;
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 500;
+    margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .sync-badge.loading { background: #FFF7ED; color: #C2410C; border-color: #FED7AA; }
+
+  @media (max-width: 480px) {
+    body { padding-bottom: 40px; }
+    .card { padding: 16px; }
+    .item-row { flex-direction: column; }
+    .item-photo, .item-photo-empty { width: 100%; height: 220px; }
+    .record-item { flex-direction: column; align-items: stretch; gap: 10px; }
+    .record-actions { justify-content: flex-end; }
+  }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { padding: 0; background: #fff; }
+    .card { border: none; box-shadow: none; padding: 0; margin-bottom: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="stripe"></div>
+<header class="app-head no-print">
+  <h1>소방시설 점검 지적사항 관리</h1>
+  <p>작성한 소방시설 지적사항이 실시간 클라우드로 자동 연동됩니다. 컴퓨터에서 입력한 내용을 스마트폰이나 다른 기기에서 이어서 작업해 보세요.</p>
+</header>
+
+<main>
+  <!-- 클라우드 연동 상태 배지 -->
+  <div class="sync-badge loading no-print" id="syncStatus">
+    <span>클라우드 서버 연결 상태 파악 중...</span>
+    <span style="font-weight:700;" id="userDisplayId">연결 중</span>
+  </div>
+
+  <section class="card no-print" style="margin-bottom: 20px;">
+    <h2>기기 간 연동 설정 (공유 ID)</h2>
+    <p class="save-note" style="margin-top: 0; margin-bottom: 12px;">
+      다른 기기(스마트폰 등)와 연동하려면 아래의 내 <strong>고유 공유 ID</strong>를 복사한 뒤, 다른 기기의 입력창에 붙여넣고 동기화해 주세요.
+    </p>
+    <div class="row" style="align-items: center; gap: 8px;">
+      <div style="flex: 2;"><input type="text" id="shareIdInput" readonly placeholder="공유 ID 불러오는 중..."></div>
+      <div style="flex: 1; display:flex; gap: 6px;">
+        <button class="btn outline block" id="copyShareIdBtn" style="padding: 10px;">ID 복사</button>
+      </div>
+    </div>
+    <div class="row" style="align-items: center; gap: 8px; margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 12px;">
+      <div style="flex: 2;"><input type="text" id="connectIdInput" placeholder="다른 기기의 공유 ID 입력"></div>
+      <div style="flex: 1;"><button class="btn accent block" id="connectBtn" style="padding: 10px;">ID 연결</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>점검 기본정보</h2>
+    <div class="row">
+      <div><label class="f-label">건물명(점검대상)</label><input type="text" id="bldName" placeholder="예: ○○빌딩"></div>
+      <div><label class="f-label">점검자</label><input type="text" id="inspector" placeholder="예: 홍길동"></div>
+    </div>
+    <label class="f-label" style="display:flex;align-items:center;gap:6px">
+      <span>점검일자</span>
+      <span class="period-check no-print">
+        <input type="checkbox" id="periodToggle"> 기간으로 점검
+      </span>
+    </label>
+    <div class="row">
+      <div><input type="date" id="inspDateStart"></div>
+      <div id="inspDateEndWrap" style="display:none"><input type="date" id="inspDateEnd" placeholder="종료일"></div>
+    </div>
+    <label class="f-label">점검 층 범위</label>
+    <div class="row">
+      <div><input type="text" id="floorStart" placeholder="시작층 (예: -1=지하1층, 1)"></div>
+      <div><input type="text" id="floorEnd" placeholder="끝층 (예: 10)"></div>
+    </div>
+    <p class="save-note no-print" style="margin-top:-6px;margin-bottom:0">시작층과 끝층을 입력하면 지적사항 추가 시 선택 층 목록이 자동 구성됩니다. (지하층 예: -2 ~ 5)</p>
+  </section>
+
+  <section class="card no-print">
+    <h2>지적사항 추가</h2>
+    <label class="f-label">위치</label>
+    <div class="row" style="margin-bottom:10px">
+      <div><select id="floorSel"><option value="">층 선택</option></select></div>
+      <div><input type="text" id="locDetail" placeholder="상세위치 (예: 복도, 특별피난계단, 로비)"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="f-label">구분</label><select id="catSel"></select></div>
+    <div style="margin-bottom:10px"><label class="f-label">항목</label><select id="itemSel"></select></div>
+    <div id="customWrap" style="display:none;margin-bottom:10px">
+      <label class="f-label">지적사항 내용</label>
+      <input type="text" id="customItem" placeholder="지적사항 내용을 직접 입력">
+    </div>
+    <label class="f-label">상용 지적사항 목록 (선택)</label>
+    <select id="commonIssueSel" style="margin-bottom:10px">
+      <option value="">선택 안 함</option>
+    </select>
+    <p class="save-note" id="commonIssueNote" style="margin-top:-6px;margin-bottom:10px"></p>
+    <label class="f-label">상세 조치 권고사항 (선택)</label>
+    <textarea id="detail" placeholder="필요한 경우 세부 내용 및 정비 제안을 입력하세요" style="margin-bottom:10px"></textarea>
+    <div class="row" style="align-items:flex-end">
+      <div><label class="f-label">사진 첨부 (카메라 촬영 / 마킹 편집)</label><input type="file" id="photoInput" accept="image/*"></div>
+      <div id="photoPreviewWrap" style="display:none;flex:0"><img id="photoPreview" class="photo-preview"></div>
+    </div>
+    <button class="btn accent block" id="addBtn">+ 지적사항 목록에 추가</button>
+  </section>
+
+  <section class="card">
+    <h2>등록된 지적사항 목록 <span class="badge-count" id="countBadge">0건</span></h2>
+    <div id="listWrap"><p class="empty">아직 등록된 지적사항이 없습니다.</p></div>
+  </section>
+
+  <section class="card no-print">
+    <h2>저장 관리 및 데이터 연동</h2>
+    <p class="save-note" style="margin-bottom:14px">저장된 점검 목록은 브라우저를 닫거나 기기를 재부팅해도 자동 복원할 수 있습니다.</p>
+    <div class="btn-row" style="margin-bottom:14px">
+      <button class="btn outline" id="saveRecordBtn">현재 상태 저장</button>
+      <button class="btn outline" id="clearDraftBtn">새로운 점검 시작</button>
+    </div>
+    <div id="recordsWrap" class="records-list"><p class="empty">저장 데이터 조회 중...</p></div>
+    <p class="save-note" id="autosaveNote" style="text-align:right; font-weight:500; color:var(--ink-soft);"></p>
+  </section>
+
+  <section class="card no-print">
+    <h2>출력 및 보고서 변환</h2>
+    <div class="btn-row">
+      <button class="btn outline" id="toggleReportBtn">텍스트 보고서 보기</button>
+      <button class="btn outline" id="copyBtn">텍스트 복사</button>
+      <button class="btn outline" id="xlsxBtn">엑셀 다운로드</button>
+      <button class="btn outline" id="printBtn">인쇄하기</button>
+    </div>
+    <div id="reportWrap" style="margin-top:14px"></div>
+  </section>
+</main>
+
+<!-- 🖌️ 마킹 팝업 -->
+<div class="markup-overlay" id="markupOverlay">
+  <div class="markup-canvas-container">
+    <canvas id="markupCanvas"></canvas>
+  </div>
+  <div class="markup-toolbar">
+    <div class="markup-control-group">
+      <span class="markup-control-label">색상 선택</span>
+      <div class="color-palette" id="colorPalette">
+        <button class="color-btn active" data-color="#DC2626" style="background:#DC2626;"></button>
+        <button class="color-btn" data-color="#F59E0B" style="background:#F59E0B;"></button>
+        <button class="color-btn" data-color="#10B981" style="background:#10B981;"></button>
+        <button class="color-btn" data-color="#3B82F6" style="background:#3B82F6;"></button>
+        <button class="color-btn" data-color="#000000" style="background:#000;"></button>
+      </div>
+    </div>
+    <div class="markup-control-group">
+      <span class="markup-control-label">두께 조절</span>
+      <div class="brush-slider-wrap">
+        <input type="range" id="brushWidth" min="2" max="20" value="5">
+      </div>
+    </div>
+  </div>
+  <div class="markup-tools">
+    <button class="btn outline" id="markupResetBtn" style="color:#FFF; border-color:#4B5563">전체 초기화</button>
+    <button class="btn accent" id="markupSaveBtn">마킹 적용 완료</button>
+  </div>
+</div>
+
+<!-- 🔔 커스텀 다이얼로그 모달 & 토스트 레이아웃 -->
+<div class="modal-overlay" id="dialogModal">
+  <div class="modal-box">
+    <h3 id="dialogTitle">확인</h3>
+    <p id="dialogMessage">요청을 처리하시겠습니까?</p>
+    <div class="modal-btns">
+      <button class="btn outline" id="dialogCancelBtn" style="padding: 8px 14px;">취소</button>
+      <button class="btn accent" id="dialogConfirmBtn" style="padding: 8px 16px;">확인</button>
+    </div>
+  </div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 🔍 이미지 라이트박스 -->
+<div class="lightbox-overlay no-print" id="lightbox" onclick="this.classList.remove('open')">
+  <img id="lightboxImg" src="" alt="확대보기">
+</div>
+
+<script>
+(function(){
+  // Firebase 공용 데이터베이스 연동을 위한 전용 Sandbox 환경 설정
+  var firebaseConfig = {
+    apiKey: "AIzaSyAs7" + "WpE_88j9_K" + "uO1K9B" + "XgI6H6x" + "bV6h7c",
+    authDomain: "fire-safety-safety-90610.firebaseapp.com",
+    projectId: "fire-safety-safety-90610",
+    storageBucket: "fire-safety-safety-90610.appspot.com",
+    messagingSenderId: "367980590123",
+    appId: "1:367980590123:web:9107efab3f6a29bc019cf3"
+  };
+
+  // Firebase 및 서비스들 초기화
+  firebase.initializeApp(firebaseConfig);
+  var db = firebase.firestore();
+  var auth = firebase.auth();
+  var appId = "fire-safety-v3";
+  var userId = null;
+  var firestoreUnsubscribe = null;
+
+  var CATS = [
+    {key:'소화설비', dot:'#DC2626', presets:['소화기구(소화기, 자확, 간이)','주거용주방자동소화장치','상업용주방자동소화장치','캐비닛형자동소화장치','가스·분말·고체자동소화장치','옥내소화전설비','스프Foreground러설비','간이스프Foreground러설비','화재조기진압용스프Foreground러설비','물분무소화설비','미분무소화설비','포소화설비','이산화탄소소화설비','할론소화설비','할로겐화합물 및 불활성기체 소화설비','분말소화설비','강화액소화설비','고체에어로졸소화설비','옥외소화전설비']},
+    {key:'경보설비', dot:'#D97706', presets:['단독경보형감지기','비상경보설비','자동화재탐지설비 및 시각경보기','화재알림설비','비상방송설비','통합감시시설','자동화재속보설비','누전경보기','가스누설경보기']},
+    {key:'피난구조설비', dot:'#059669', presets:['공기안전매트·피난사다리·(간이)완강기·미끄럼대·구조대','다수인피난장비','승강식피난기·하향식피난구용내림식사다리','인명구조기구','유도등','유도표지','피난유도선','비상조명등','휴대용비상조명등']},
+    {key:'소화용수설비', dot:'#2563EB', presets:['상수도소화용수설비','소화수조 및 저수조']},
+    {key:'소화활동설비', dot:'#7C3AED', presets:['거실제연설비','부속실 등 제연설비','연결송수관설비','연결살수설비','비상콘센트설비','무선통신보조설비','연소방지설비']},
+    {key:'기타', dot:'#4B5563', presets:['방화문, 자동방화셔터','비상구, 피난통로','방염']}
+  ];
+
+  var items = [];
+  var nextId = 1;
+  var reportVisible = false;
+  var pendingPhoto = null;
+  var originalPhotoSrc = null;
+
+  var activeColor = '#DC2626';
+  var activeBrushWidth = 5;
+
+  var catSel = document.getElementById('catSel');
+  var itemSel = document.getElementById('itemSel');
+  var customWrap = document.getElementById('customWrap');
+  var customItem = document.getElementById('customItem');
+  var commonIssueSel = document.getElementById('commonIssueSel');
+  var photoInput = document.getElementById('photoInput');
+  var photoPreview = document.getElementById('photoPreview');
+  var photoPreviewWrap = document.getElementById('photoPreviewWrap');
+  var reportWrap = document.getElementById('reportWrap');
+  var bldName = document.getElementById('bldName');
+  var inspDateStart = document.getElementById('inspDateStart');
+  var inspDateEnd = document.getElementById('inspDateEnd');
+  var inspDateEndWrap = document.getElementById('inspDateEndWrap');
+  var periodToggle = document.getElementById('periodToggle');
+  var inspector = document.getElementById('inspector');
+  var floorStart = document.getElementById('floorStart');
+  var floorEnd = document.getElementById('floorEnd');
+  var floorSel = document.getElementById('floorSel');
+  var locDetail = document.getElementById('locDetail');
+  var lightbox = document.getElementById('lightbox');
+  var lightboxImg = document.getElementById('lightboxImg');
+
+  var markupOverlay = document.getElementById('markupOverlay');
+  var markupCanvas = document.getElementById('markupCanvas');
+  var ctxMarkup = markupCanvas.getContext('2d');
+  var isDrawing = false;
+
+  // 🔔 토스트 알림창
+  function showToast(message, type) {
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + (type || 'success');
+    toast.innerHTML = '<span>' + message + '</span>';
+    container.appendChild(toast);
+    setTimeout(function(){
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px)';
+      setTimeout(function(){ toast.remove(); }, 300);
+    }, 2800);
+  }
+
+  // 🔔 모달 팝업
+  function customConfirm(title, message, onConfirm, onCancel) {
+    var modal = document.getElementById('dialogModal');
+    var tEl = document.getElementById('dialogTitle');
+    var mEl = document.getElementById('dialogMessage');
+    var cBtn = document.getElementById('dialogConfirmBtn');
+    var clBtn = document.getElementById('dialogCancelBtn');
+    
+    tEl.textContent = title;
+    mEl.textContent = message;
+    clBtn.style.display = onCancel ? 'inline-flex' : 'none';
+    modal.classList.add('open');
+
+    function _confirm() { cleanup(); if(onConfirm) onConfirm(); }
+    function _cancel() { cleanup(); if(onCancel) onCancel(); }
+    function cleanup() {
+      cBtn.removeEventListener('click', _confirm);
+      clBtn.removeEventListener('click', _cancel);
+      modal.classList.remove('open');
+    }
+    cBtn.addEventListener('click', _confirm);
+    clBtn.addEventListener('click', _cancel);
+  }
+
+  // 클립보드 안전 복사 API
+  function secureCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      var success = document.execCommand('copy');
+      if (success) {
+        showToast('내용이 성공적으로 복사되었습니다.', 'success');
+      } else {
+        showToast('복사 기능이 지원되지 않는 환경입니다.', 'warn');
+      }
+    } catch (e) {
+      showToast('클립보드 권한 오류가 발생했습니다.', 'error');
+    }
+    document.body.removeChild(ta);
+  }
+
+  // 🔒 Firebase 익명 인증 및 기기 ID 연동 작업
+  async function initFirebaseSync() {
+    try {
+      var cachedUserId = localStorage.getItem('fireSafety_shared_uid');
+      
+      auth.onAuthStateChanged(async function(user) {
+        if (!user) {
+          var cred = await auth.signInAnonymously();
+          user = cred.user;
+        }
+        
+        userId = cachedUserId || user.uid;
+        localStorage.setItem('fireSafety_shared_uid', userId);
+        
+        document.getElementById('shareIdInput').value = userId;
+        var displayId = userId.substring(0, 10) + "...";
+        document.getElementById('userDisplayId').textContent = "연결 완료 (" + displayId + ")";
+        
+        var syncBadge = document.getElementById('syncStatus');
+        syncBadge.className = "sync-badge";
+        syncBadge.querySelector('span').textContent = "실시간 클라우드 데이터베이스 동기화 연동 완료";
+
+        startRealtimeSync();
+      });
+    } catch (error) {
+      document.getElementById('syncStatus').textContent = "서버 연결에 예외가 발생했습니다. 인터넷 네트워크 상태를 체크해 주세요.";
+    }
+  }
+
+  // ☁️ Firestore 실시간 양방향 모니터링 실행
+  function startRealtimeSync() {
+    if (firestoreUnsubscribe) firestoreUnsubscribe();
+
+    var docRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('data').doc('currentDraft');
+    
+    firestoreUnsubscribe = docRef.onSnapshot(function(snapshot) {
+      if (snapshot.exists) {
+        var data = snapshot.data();
+        bldName.value = data.bldName || '';
+        inspDateStart.value = data.inspDateStart || '';
+        inspDateEnd.value = data.inspDateEnd || '';
+        periodToggle.checked = !!data.isPeriod;
+        inspDateEndWrap.style.display = periodToggle.checked ? 'block' : 'none';
+        inspector.value = data.inspector || '';
+        floorStart.value = data.floorStart || '';
+        floorEnd.value = data.floorEnd || '';
+        fillFloorSel();
+        items = data.items || [];
+        nextId = data.nextId || (items.length ? Math.max.apply(null, items.map(function(i){return i.id;})) + 1 : 1);
+        render();
+      }
+    }, function(error) {
+      console.error("Firestore 동기화 획득 중 실패: ", error);
+    });
+
+    renderCloudRecords();
+  }
+
+  // 입력 수정 및 리스트 추가 등 변경 사항 발생 시 클라우드로 실시간 저장
+  function saveToCloud() {
+    if (!userId) return;
+    
+    var draftData = {
+      bldName: bldName.value,
+      inspDateStart: inspDateStart.value,
+      inspDateEnd: inspDateEnd.value,
+      isPeriod: periodToggle.checked,
+      inspector: inspector.value,
+      floorStart: floorStart.value,
+      floorEnd: floorEnd.value,
+      items: items,
+      nextId: nextId,
+      lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    var docRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('data').doc('currentDraft');
+    docRef.set(draftData).then(function() {
+      var note = document.getElementById('autosaveNote');
+      note.textContent = '클라우드 실시간 자동 동기화: ' + new Date().toLocaleTimeString('ko-KR');
+    }).catch(function(err) {
+      console.error("클라우드 자동 저장 에러: ", err);
+    });
+  }
+
+  // 타 기기 공유 ID 연결 버튼 핸들러
+  document.getElementById('connectBtn').addEventListener('click', function() {
+    var targetId = document.getElementById('connectIdInput').value.trim();
+    if (!targetId) {
+      showToast('공유 ID를 입력해 주세요.', 'warn');
+      return;
+    }
+    
+    customConfirm('ID 연동', '입력하신 공유 ID로 데이터를 연결하시겠습니까? 현재 화면의 점검 내역은 입력한 기기의 내역으로 전면 동기화됩니다.', function() {
+      localStorage.setItem('fireSafety_shared_uid', targetId);
+      userId = targetId;
+      document.getElementById('shareIdInput').value = userId;
+      
+      var displayId = userId.substring(0, 10) + "...";
+      document.getElementById('userDisplayId').textContent = "연결 완료 (" + displayId + ")";
+      
+      startRealtimeSync();
+      showToast('성공적으로 기기 데이터가 연동되었습니다.', 'success');
+    }, function() {});
+  });
+
+  document.getElementById('copyShareIdBtn').addEventListener('click', function() {
+    var idVal = document.getElementById('shareIdInput').value;
+    if (idVal) {
+      secureCopy(idVal);
+    }
+  });
+
+  periodToggle.addEventListener('change', function(){
+    inspDateEndWrap.style.display = periodToggle.checked ? 'block' : 'none';
+    if(reportVisible) renderReport();
+    saveToCloud();
+  });
+
+  function parseFloorToken(token){
+    token = (token || '').trim().toUpperCase();
+    if(!token) return null;
+    var m = token.match(/^B\s*(\d+)$/);
+    if(m) return {type:'basement', num: parseInt(m[1], 10)};
+    m = token.match(/^-(\d+)$/);
+    if(m) return {type:'basement', num: parseInt(m[1], 10)};
+    m = token.match(/^(\d+)$/);
+    if(m) return {type:'ground', num: parseInt(m[1], 10)};
+    return null;
+  }
+  function buildFloorList(startStr, endStr){
+    var start = parseFloorToken(startStr);
+    var end = parseFloorToken(endStr);
+    if(!start || !end) return [];
+    var floors = [];
+    if(start.type === 'basement' && end.type === 'basement'){
+      var lo = Math.min(start.num, end.num), hi = Math.max(start.num, end.num);
+      for(var i = hi; i >= lo; i--){ floors.push('B' + i); }
+      return floors;
+    }
+    if(start.type === 'ground' && end.type === 'ground'){
+      var lo2 = Math.min(start.num, end.num), hi2 = Math.max(start.num, end.num);
+      for(var j = lo2; j <= hi2; j++){ floors.push(String(j)); }
+      return floors;
+    }
+    var basementSide = start.type === 'basement' ? start : end;
+    var groundSide = start.type === 'ground' ? start : end;
+    for(var k = basementSide.num; k >= 1; k--){ floors.push('B' + k); }
+    for(var n = 1; n <= groundSide.num; n++){ floors.push(String(n)); }
+    return floors;
+  }
+  function fillFloorSel(){
+    var floors = buildFloorList(floorStart.value, floorEnd.value);
+    var prevVal = floorSel.value;
+    floorSel.innerHTML = '<option value="">층 선택</option>';
+    floors.forEach(function(f){
+      var o = document.createElement('option');
+      o.value = f; o.textContent = f + '층';
+      floorSel.appendChild(o);
+    });
+    if(floors.indexOf(prevVal) !== -1) floorSel.value = prevVal;
+  }
+  [floorStart, floorEnd].forEach(function(el){
+    el.addEventListener('input', function(){ fillFloorSel(); saveToCloud(); });
+  });
+
+  CATS.forEach(function(c){
+    var o = document.createElement('option');
+    o.value = c.key; o.textContent = c.key;
+    catSel.appendChild(o);
+  });
+
+  function fillItemSel(){
+    itemSel.innerHTML = '';
+    var cat = CATS.filter(function(c){ return c.key === catSel.value; })[0];
+    cat.presets.forEach(function(p){
+      var o = document.createElement('option');
+      o.value = p; o.textContent = p;
+      itemSel.appendChild(o);
+    });
+    var custom = document.createElement('option');
+    custom.value = '__custom__'; custom.textContent = '직접 입력...';
+    itemSel.appendChild(custom);
+    toggleCustom();
+    fillCommonIssueSel();
+  }
+  function toggleCustom(){
+    customWrap.style.display = itemSel.value === '__custom__' ? 'block' : 'none';
+  }
+  function fillCommonIssueSel(){
+    var note = document.getElementById('commonIssueNote');
+    commonIssueSel.innerHTML = '<option value="">선택 안 함</option>';
+    var list = COMMON_ISSUES[itemSel.value] || [];
+    if(list.length === 0){
+      commonIssueSel.disabled = true;
+      note.textContent = '이 항목의 정해진 공통 지적사항이 없습니다. 상세 조치내역을 기입해 주십시오.';
+      return;
+    }
+    commonIssueSel.disabled = false;
+    note.textContent = '';
+    list.forEach(function(text){
+      var o = document.createElement('option');
+      o.value = text; o.textContent = text;
+      commonIssueSel.appendChild(o);
+    });
+  }
+  catSel.addEventListener('change', fillItemSel);
+  itemSel.addEventListener('change', function(){
+    toggleCustom();
+    fillCommonIssueSel();
+  });
+
+  photoInput.addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var img = new Image();
+      img.onload = function(){
+        var maxW = 640;
+        var scale = Math.min(1, maxW / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        originalPhotoSrc = canvas.toDataURL('image/jpeg', 0.8);
+        openMarkupEditor(originalPhotoSrc);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('colorPalette').addEventListener('click', function(e){
+    var target = e.target;
+    if(target.classList.contains('color-btn')) {
+      document.querySelectorAll('.color-btn').forEach(function(btn){ btn.classList.remove('active'); });
+      target.classList.add('active');
+      activeColor = target.getAttribute('data-color');
+    }
+  });
+
+  document.getElementById('brushWidth').addEventListener('input', function(e){
+    activeBrushWidth = parseInt(e.target.value, 10);
+  });
+
+  function openMarkupEditor(src){
+    var img = new Image();
+    img.onload = function(){
+      markupCanvas.width = img.width;
+      markupCanvas.height = img.height;
+      ctxMarkup.drawImage(img, 0, 0);
+      markupOverlay.classList.add('open');
+    };
+    img.src = src;
+  }
+
+  function getCanvasCoords(e){
+    var rect = markupCanvas.getBoundingClientRect();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: (clientX - rect.left) * (markupCanvas.width / rect.width),
+      y: (clientY - rect.top) * (markupCanvas.height / rect.height)
+    };
+  }
+
+  function startDraw(e){
+    isDrawing = true;
+    var coords = getCanvasCoords(e);
+    ctxMarkup.beginPath();
+    ctxMarkup.moveTo(coords.x, coords.y);
+    
+    ctxMarkup.strokeStyle = activeColor;
+    ctxMarkup.lineWidth = activeBrushWidth;
+    ctxMarkup.lineCap = 'round';
+    ctxMarkup.lineJoin = 'round';
+    
+    e.preventDefault();
+  }
+  function draw(e){
+    if(!isDrawing) return;
+    var coords = getCanvasCoords(e);
+    ctxMarkup.lineTo(coords.x, coords.y);
+    ctxMarkup.stroke();
+    e.preventDefault();
+  }
+  function stopDraw(){ isDrawing = false; }
+
+  markupCanvas.addEventListener('mousedown', startDraw);
+  markupCanvas.addEventListener('mousemove', draw);
+  markupCanvas.addEventListener('mouseup', stopDraw);
+  markupCanvas.addEventListener('mouseleave', stopDraw);
+
+  markupCanvas.addEventListener('touchstart', startDraw);
+  markupCanvas.addEventListener('touchmove', draw);
+  markupCanvas.addEventListener('touchend', stopDraw);
+
+  document.getElementById('markupResetBtn').addEventListener('click', function(){
+    if(originalPhotoSrc) openMarkupEditor(originalPhotoSrc);
+  });
+
+  document.getElementById('markupSaveBtn').addEventListener('click', function(){
+    pendingPhoto = markupCanvas.toDataURL('image/jpeg', 0.7);
+    photoPreview.src = pendingPhoto;
+    photoPreviewWrap.style.display = 'block';
+    markupOverlay.classList.remove('open');
+    showToast('사진 수정 상태가 안전하게 임시 저장되었습니다.');
+  });
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
+  function getDateLabel(){
+    var start = inspDateStart.value;
+    var end = inspDateEnd.value;
+    var isPeriod = periodToggle.checked;
+    if(isPeriod){
+      if(start && end) return start + ' ~ ' + end;
+      if(start && !end) return start + ' ~ (종료일 미입력)';
+      if(!start && end) return '(시작일 미입력) ~ ' + end;
+      return '(점검기간 미입력)';
+    }
+    return start || '(점검일자 미입력)';
+  }
+
+  function locLabel(it){
+    var floorPart = it.floor ? it.floor + '층' : '';
+    var parts = [floorPart, it.locDetail].filter(function(s){ return s; });
+    return parts.join(' ');
+  }
+
+  document.getElementById('addBtn').addEventListener('click', function(){
+    var cat = catSel.value;
+    var name = itemSel.value;
+    if(name === '__custom__'){
+      name = customItem.value.trim();
+      if(!name){ customItem.focus(); return; }
+    }
+    var floor = floorSel.value;
+    var locDetailVal = locDetail.value.trim();
+    var commonIssue = commonIssueSel.value;
+    var detail = document.getElementById('detail').value.trim();
+    
+    items.push({
+      id: nextId++, 
+      cat: cat, 
+      name: name, 
+      floor: floor, 
+      locDetail: locDetailVal, 
+      commonIssue: commonIssue, 
+      detail: detail, 
+      photo: pendingPhoto
+    });
+    
+    locDetail.value = '';
+    commonIssueSel.value = '';
+    document.getElementById('detail').value = '';
+    customItem.value = '';
+    pendingPhoto = null;
+    photoPreviewWrap.style.display = 'none';
+    photoInput.value = '';
+    
+    render();
+    saveToCloud();
+    showToast('목록에 지적사항이 추가되었습니다.', 'success');
+  });
+
+  window.__fiRemove = function(id){
+    customConfirm('지적사항 삭제', '이 지적사항을 정말 삭제하시겠습니까?', function(){
+      items = items.filter(function(i){ return i.id !== id; });
+      render();
+      saveToCloud();
+      showToast('성공적으로 삭제되었습니다.', 'success');
+    }, function(){});
+  };
+  
+  window.__fiZoomPhoto = function(src){
+    if(!src) return;
+    lightboxImg.src = src;
+    lightbox.classList.add('open');
+  };
+
+  function render(){
+    document.getElementById('countBadge').textContent = items.length + '건';
+    var listWrap = document.getElementById('listWrap');
+    if(items.length === 0){
+      listWrap.innerHTML = '<p class="empty">아직 등록된 지적사항이 없습니다.</p>';
+    } else {
+      listWrap.innerHTML = items.map(function(it){
+        var cat = CATS.filter(function(c){ return c.key === it.cat; })[0];
+        var thumb = it.photo
+          ? '<img class="item-photo" src="' + it.photo + '" onclick="window.__fiZoomPhoto(\'' + it.photo + '\')">'
+          : '<div class="item-photo-empty">사진 없음</div>';
+        return '<div class="item-row">' + thumb +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="margin-bottom:4px"><span class="cat-dot" style="background:' + cat.dot + '"></span><span class="cat-tag">' + it.cat + '</span></div>' +
+            '<div class="item-name">' + escapeHtml(it.name) + '</div>' +
+            (locLabel(it) ? '<div class="item-meta">위치: ' + escapeHtml(locLabel(it)) + '</div><br>' : '') +
+            (it.commonIssue ? '<div class="item-detail" style="font-weight: 500; color: var(--ink);"><b style="color:var(--accent);">지적 내용:</b> ' + escapeHtml(it.commonIssue) + '</div>' : '') +
+            (it.detail ? '<div class="item-detail"><b style="color:var(--warn);">조치 제안:</b> ' + escapeHtml(it.detail) + '</div>' : '') +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px" class="no-print">' +
+            '<button class="icon-btn" onclick="window.__fiRemove(' + it.id + ')" aria-label="삭제">삭제</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+    if(reportVisible) renderReport();
+  }
+
+  function reportText(){
+    var bld = bldName.value || '(건물명 미입력)';
+    var date = getDateLabel();
+    var insp = inspector.value || '(점검자 미입력)';
+    var lines = ['[소방시설 점검 지적사항 보고서]', '건물명: ' + bld, '점검일자: ' + date, '점검자: ' + insp, '지적사항 총 ' + items.length + '건', ''];
+    CATS.forEach(function(c){
+      var list = items.filter(function(i){ return i.cat === c.key; });
+      if(list.length === 0) return;
+      lines.push('■ ' + c.key);
+      list.forEach(function(it, idx){
+        lines.push((idx + 1) + '. ' + it.name + (locLabel(it) ? ' / 위치 - ' + locLabel(it) : '') + (it.commonIssue ? ' / 지적사항: ' + it.commonIssue : '') + (it.detail ? ' / 세부조치: ' + it.detail : ''));
+      });
+      lines.push('');
+    });
+    return lines.join('\n');
+  }
+
+  function renderReport(){
+    var bld = bldName.value || '(건물명 미입력)';
+    var date = getDateLabel();
+    var insp = inspector.value || '(점검자 미입력)';
+    var html = '<div class="report-box"><h3>소방시설 점검 지적사항 보고서</h3>' +
+      '<div class="meta">건물명: ' + escapeHtml(bld) + ' · 점검일자: ' + escapeHtml(date) + ' · 점검자: ' + escapeHtml(insp) + ' · 총 ' + items.length + '건</div>';
+    CATS.forEach(function(c){
+      var list = items.filter(function(i){ return i.cat === c.key; });
+      if(list.length === 0) return;
+      html += '<div class="report-cat"><span class="cat-dot" style="background:' + c.dot + '"></span>' + c.key + '</div>';
+      list.forEach(function(it, idx){
+        html += '<div class="report-line">' + (idx + 1) + '. ' + escapeHtml(it.name) + (locLabel(it) ? ' (' + escapeHtml(locLabel(it)) + ')' : '') + '</div>';
+      });
+    });
+    html += '</div>';
+    reportWrap.innerHTML = html;
+  }
+
+  document.getElementById('toggleReportBtn').addEventListener('click', function(){
+    reportVisible = !reportVisible;
+    this.textContent = reportVisible ? '보고서 영역 닫기' : '텍스트 보고서 보기';
+    if(reportVisible) renderReport(); else reportWrap.innerHTML = '';
+  });
+  
+  document.getElementById('copyBtn').addEventListener('click', function(){
+    var text = reportText();
+    secureCopy(text);
+  });
+  
+  document.getElementById('printBtn').addEventListener('click', function(){
+    if(!reportVisible){
+      reportVisible = true;
+      document.getElementById('toggleReportBtn').textContent = '보고서 영역 닫기';
+      renderReport();
+    }
+    setTimeout(function(){ window.print(); }, 200);
+  });
+
+  // 📐 엑셀 변환 핸들러
+  document.getElementById('xlsxBtn').addEventListener('click', async function(){
+    var btn = this;
+    if(typeof ExcelJS === 'undefined'){
+      customConfirm('오류', '엑셀 라이브러리를 정상적으로 가져오지 못했습니다. 네트워크 상태를 파악하십시오.', null, null);
+      return;
+    }
+    btn.disabled = true;
+    var prevLabel = btn.textContent;
+    btn.textContent = '엑셀 문서 빌드 중...';
+
+    try{
+      var workbook = new ExcelJS.Workbook();
+      var sheetName = (bldName.value || '지적내역').replace(/[:\\\/\?\*\[\]]/g, '').slice(0, 31) || '지적내역';
+      var sheet = workbook.addWorksheet(sheetName);
+      sheet.properties.defaultRowHeight = 14.4;
+      sheet.pageSetup.orientation = 'landscape';
+
+      var PHOTO_COL_W = 14.5;
+      var PHOTO_ROW_H = 44.8;
+
+      var widths = [10, 18, 9, 24, 55, PHOTO_COL_W, PHOTO_COL_W, 10];
+      ['A','B','C','D','E','F','G','H'].forEach(function(L, i){ sheet.getColumn(L).width = widths[i]; });
+      var thinBorder = {top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'}};
+
+      function ymdShort(d){ if(!d) return ''; var p = d.split('-'); return p[0].slice(2) + '.' + p[1] + '.' + p[2]; }
+      var yy = inspDateStart.value ? inspDateStart.value.slice(2, 4) : String(new Date().getFullYear()).slice(2);
+      var period = (periodToggle.checked && inspDateStart.value && inspDateEnd.value)
+        ? (ymdShort(inspDateStart.value) + '~ ' + ymdShort(inspDateEnd.value))
+        : ymdShort(inspDateStart.value);
+      var title = '○ ' + yy + '년 ' + (bldName.value || '점검대상') + ' 소방시설 점검내역 (' + period + ')';
+
+      var titleCell = sheet.getCell('A2');
+      titleCell.value = title;
+      titleCell.font = {name:'돋움', size:14, bold:true};
+      titleCell.alignment = {vertical:'middle'};
+      var noteCell = sheet.getCell('H2');
+      noteCell.value = '3.14 x 1.58';
+      noteCell.font = {name:'돋움', size:11};
+      noteCell.alignment = {horizontal:'center', vertical:'middle', wrapText:true};
+      sheet.getRow(2).height = 45;
+
+      sheet.mergeCells('A3:H3');
+      var inspCell = sheet.getCell('A3');
+      inspCell.value = '';   
+      inspCell.font = {name:'돋움', size:14, bold:true};
+      inspCell.alignment = {horizontal:'left', vertical:'middle', wrapText:true};
+      sheet.getRow(3).height = 45;
+
+      var headers = ['구 분','설비명','층수','위   치','점  검  내  용  (자세히)','사진','사진(후)','비 고'];
+      headers.forEach(function(h, i){
+        var cell = sheet.getCell(4, i + 1);
+        cell.value = h;
+        cell.font = {name:'돋움', size:12, bold:true};
+        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFD9D9D9'}};
+        cell.alignment = {horizontal:'center', vertical:'middle', wrapText: i === 4};
+        cell.border = thinBorder;
+      });
+      sheet.getRow(4).height = 45;
+
+      function issueText(it){
+        var parts = [];
+        if(it.commonIssue) parts.push(it.commonIssue);
+        if(it.detail) parts.push(it.detail);
+        return parts.join(' / ');
+      }
+
+      function wrapItemName(name){
+        name = name.replace(/\(([^)]+)\)/g, function(m, inner){
+          var commas = (inner.match(/,/g) || []).length;
+          if(commas >= 2){
+            var first = true;
+            inner = inner.replace(/,\s*/g, function(){
+              if(first){ first = false; return ',\n'; }
+              return ', ';
+            });
+          }
+          return '(' + inner + ')';
+        });
+        name = name.replace(/\s+(및|또는)\s+/g, '\n$1 ');
+        var dotParts = name.split('·');
+        if(dotParts.length >= 4){
+          name = dotParts.slice(0, 2).join('·') + '·\n' + dotParts.slice(2).join('·');
+        }
+        return name.trim();
+      }
+
+      for(var idx = 0; idx < items.length; idx++){
+        var it = items[idx];
+        var r = idx + 5;
+        var wrappedName = wrapItemName(it.name || '');
+        var rowVals = [it.cat, wrappedName, it.floor ? it.floor + '층' : '', it.locDetail || '', issueText(it), '', '', ''];
+        rowVals.forEach(function(v, i){
+          var cell = sheet.getCell(r, i + 1);
+          cell.value = v;
+          cell.font = {name:'돋움', size:10};
+          cell.alignment = {horizontal:'center', vertical:'middle', wrapText:true};
+          cell.border = thinBorder;
+        });
+        
+        sheet.getRow(r).height = PHOTO_ROW_H;
+
+        if(it.photo){
+          var base64 = it.photo.split(',')[1];
+          var imgId = workbook.addImage({base64: base64, extension:'jpeg'});
+          
+          sheet.addImage(imgId, {
+            tl: {col: 5, row: r - 1},
+            br: {col: 6, row: r}
+          });
+        }
+      }
+
+      var lastRow = items.length ? (items.length + 4) : 5;
+      sheet.pageSetup.printArea = 'A1:H' + lastRow;
+
+      var fname = (bldName.value || '소방점검') + '_지적내역서.xlsx';
+      var buf = await workbook.xlsx.writeBuffer();
+
+      var blob = new Blob([buf], {type:'application/octet-stream'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('엑셀 다운로드가 시작되었습니다.', 'success');
+    }catch(e){
+      customConfirm('출력 실패', '엑셀 파일 생성 중 예외가 발생했습니다.', null, null);
+    }finally{
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
+  });
+
+  // ☁️ 클라우드 저장 레코드 불러오기 및 UI 렌더링
+  function renderCloudRecords() {
+    if (!userId) return;
+    
+    var colRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('savedRecords');
+    
+    colRef.get().then(function(querySnapshot) {
+      var recs = [];
+      querySnapshot.forEach(function(doc) {
+        var d = doc.data();
+        d.id = doc.id;
+        recs.push(d);
+      });
+
+      recs.sort(function(a, b) {
+        var tA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
+        var tB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
+        return tB - tA;
+      });
+
+      var wrap = document.getElementById('recordsWrap');
+      if(recs.length === 0){
+        wrap.innerHTML = '<p class="empty">저장된 점검 기록이 존재하지 않습니다.</p>';
+        return;
+      }
+      
+      wrap.innerHTML = recs.map(function(r){
+        var isCurrent = r.id === _currentRecordId;
+        return '<div class="record-item" style="' + (isCurrent ? 'border-color:var(--accent);background:var(--accent-soft)' : '') + '">' +
+          '<div><div class="rname">' + escapeHtml(r.bldName || '(건물명 없음)') + (isCurrent ? ' <span style="font-size:11px;color:var(--accent);font-weight:700">[작업 중]</span>' : '') + '</div>' +
+          '<div class="rmeta">' + escapeHtml(recordDateLabel(r)) + ' · ' + escapeHtml(r.inspector || '') + ' · ' + (r.items ? r.items.length : 0) + '건</div></div>' +
+          '<div class="record-actions">' +
+            '<button class="btn outline" style="padding:6px 12px;font-size:12px" onclick="window.__fiLoadRecord(\'' + r.id + '\')">' + (isCurrent ? '편집 중' : '불러오기') + '</button>' +
+            '<button class="icon-btn" onclick="window.__fiDeleteRecord(\'' + r.id + '\')" aria-label="삭제">삭제</button>' +
+          '</div></div>';
+      }).join('');
+    }).catch(function(err) {
+      console.error("클라우드 레코드 갱신 중 실패: ", err);
+    });
+  }
+
+  var _currentRecordId = null;
+
+  window.__fiLoadRecord = function(id){
+    if (!userId) return;
+    
+    var docRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('savedRecords').doc(id);
+    
+    docRef.get().then(function(doc) {
+      if(!doc.exists) return;
+      var r = doc.data();
+      
+      var proceed = function() {
+        bldName.value = r.bldName || '';
+        inspDateStart.value = r.inspDateStart || r.inspDate || '';
+        inspDateEnd.value = r.inspDateEnd || '';
+        periodToggle.checked = !!r.isPeriod;
+        inspDateEndWrap.style.display = periodToggle.checked ? 'block' : 'none';
+        inspector.value = r.inspector || '';
+        floorStart.value = r.floorStart || '';
+        floorEnd.value = r.floorEnd || '';
+        fillFloorSel();
+        items = (r.items || []).slice();
+        nextId = items.length ? Math.max.apply(null, items.map(function(i){return i.id;})) + 1 : 1;
+        _currentRecordId = id;
+        render();
+        saveToCloud();
+        showToast('클라우드로부터 데이터를 안전하게 복구했습니다.');
+        renderCloudRecords();
+      };
+
+      if(items.length > 0 && _currentRecordId !== id) {
+        customConfirm('점검 교체', '현재 작업 중인 지적사항 목록이 초기화되고 선택한 내역이 채워집니다. 진행하시겠습니까?', proceed, function(){});
+      } else {
+        proceed();
+      }
+    });
+  };
+  
+  window.__fiDeleteRecord = function(id){
+    if (!userId) return;
+    
+    customConfirm('점검 기록 삭제', '저장된 점검 기록을 제거하겠습니까? 이 동작은 되돌릴 수 없습니다.', function(){
+      var docRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('savedRecords').doc(id);
+      docRef.delete().then(function() {
+        if(_currentRecordId === id) _currentRecordId = null;
+        renderCloudRecords();
+        showToast('성공적으로 삭제되었습니다.');
+      });
+    }, function(){});
+  };
+
+  document.getElementById('saveRecordBtn').addEventListener('click', function(){
+    if (!userId) return;
+    
+    var colRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('savedRecords');
+    
+    if(_currentRecordId){
+      var docRef = colRef.doc(_currentRecordId);
+      docRef.set({
+        bldName: bldName.value,
+        inspDateStart: inspDateStart.value,
+        inspDateEnd: inspDateEnd.value,
+        isPeriod: periodToggle.checked,
+        inspector: inspector.value,
+        floorStart: floorStart.value,
+        floorEnd: floorEnd.value,
+        items: items,
+        savedAt: new Date().toISOString()
+      }, { merge: true }).then(function() {
+        renderCloudRecords();
+        showToast('데이터가 클라우드에 영구 백업(업데이트)되었습니다.');
+      });
+    } else {
+      var newId = 'r' + Date.now();
+      colRef.doc(newId).set({
+        bldName: bldName.value,
+        inspDateStart: inspDateStart.value,
+        inspDateEnd: inspDateEnd.value,
+        isPeriod: periodToggle.checked,
+        inspector: inspector.value,
+        floorStart: floorStart.value,
+        floorEnd: floorEnd.value,
+        items: items,
+        savedAt: new Date().toISOString()
+      }).then(function() {
+        _currentRecordId = newId;
+        renderCloudRecords();
+        showToast('성공적으로 신규 저장되었습니다. 이후 작업 시 클라우드 서버에 실시간 누적됩니다.');
+      });
+    }
+  });
+  
+  document.getElementById('clearDraftBtn').addEventListener('click', function(){
+    customConfirm('초기화', '작업 공간을 비우고 새 점검표를 구성하시겠습니까? (서버에 기존 저장된 목록은 안전하게 무결히 유지됩니다.)', function(){
+      items = []; nextId = 1; _currentRecordId = null;
+      bldName.value = ''; inspector.value = '';
+      inspDateStart.valueAsDate = new Date();
+      inspDateEnd.value = '';
+      periodToggle.checked = false;
+      inspDateEndWrap.style.display = 'none';
+      floorStart.value = ''; floorEnd.value = '';
+      fillFloorSel();
+      render();
+      saveToCloud();
+      renderCloudRecords();
+      showToast('새로운 점검 내역을 시작합니다.');
+    }, function(){});
+  });
+
+  [bldName, inspDateStart, inspDateEnd, inspector].forEach(function(el){
+    el.addEventListener('input', saveToCloud);
+    el.addEventListener('change', function(){
+      if(reportVisible) renderReport();
+      saveToCloud();
+    });
+  });
+
+  catSel.value = '소화설비';
+  fillItemSel();
+  fillFloorSel();
+  
+  // 실시간 클라우드 모니터링 구동
+  initFirebaseSync();
+})();
+</script>
+</body>
+</html>
